@@ -396,31 +396,41 @@ def download_chapter_by_number(series_id: str, chapter_num: float, out_dir: str,
 def download_from_chapter_to_latest(series_id: str, from_chapter: float, out_dir: str, make_pdf: bool = True, session: Optional[requests.Session] = None, dry_run: bool = False):
     """Download all chapters from `from_chapter` up to the latest available.
 
-    Uses the series chapter listing to determine available chapters. If the provided
-    from_chapter isn't present, `find_chapter_by_number` will attempt to probe known IDs.
+    This implementation iterates in 0.5 increments from `from_chapter` to the latest
+    and tries to resolve each chapter individually via find_chapter_by_number.
+    If a particular chapter cannot be resolved it will be skipped with a message.
     """
     s = session or requests.Session()
     chapters = get_chapters_from_series(series_id, s)
     if not chapters:
         raise RuntimeError(f"No chapters found for series {series_id}")
 
-    # Resolve starting chapter object
-    start_chap = find_chapter_by_number(series_id, from_chapter, s)
-    if not start_chap:
-        raise RuntimeError(f"Start chapter {from_chapter} could not be resolved")
+    latest = chapters[-1].chapter_num
 
-    # Select chapters with number >= start_chap
-    to_download = [c for c in chapters if c.chapter_num >= start_chap.chapter_num]
-    if not to_download:
-        raise RuntimeError(f"No chapters to download starting from {from_chapter}")
+    # Iterate in 0.5 steps using integer arithmetic to avoid float drift
+    start_half = int(round(from_chapter * 2))
+    end_half = int(round(latest * 2))
 
     results = []
-    for c in to_download:
+    for i in range(start_half, end_half + 1):
+        chap_num = i / 2.0
         try:
-            res = download_chapter_by_number(series_id, c.chapter_num, out_dir, make_pdf=make_pdf, session=s, dry_run=dry_run)
+            # Try to resolve this chapter (may raise if not found)
+            chap = find_chapter_by_number(series_id, chap_num, s)
+        except Exception as e:
+            # Chapter not found — log and continue
+            print(f"Chapter {chap_num} not found: {e}")
+            continue
+
+        try:
+            res = download_chapter_by_number(series_id, chap.chapter_num, out_dir, make_pdf=make_pdf, session=s, dry_run=dry_run)
             results.append(res)
         except Exception as e:
-            print(f"Error downloading chapter {c.chapter_num}: {e}")
+            print(f"Error downloading chapter {chap.chapter_num}: {e}")
+
+    if not results:
+        raise RuntimeError(f"No chapters were downloaded starting from {from_chapter}")
+
     return results
 
 
