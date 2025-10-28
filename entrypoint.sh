@@ -21,9 +21,14 @@ PYTHON=/usr/local/bin/python
 : ${CRON:="false"}
 : ${PDF:="true"}
 DRY_RUN_FLAG=""
+PDF_FLAG=""
 
 if [ "${DRY_RUN:-}" = "1" ] || [ "${DRY_RUN:-}" = "true" ]; then
   DRY_RUN_FLAG="--dry-run"
+fi
+
+if [ "${PDF}" = "false" ] || [ "${PDF}" = "0" ]; then
+  PDF_FLAG="--no-pdf"
 fi
 
 if [ -z "$SERIES" ]; then
@@ -52,12 +57,13 @@ if [ "${RUN_ONCE:-}" != "" ] && [ "${RUN_ONCE:-}" != "0" ]; then
       echo "ERROR: FROM_CHAPTER must be set when MODE=from"
       exit 2
     fi
-    $PYTHON /app/bato_scraper.py --series "$SERIES" --from "$FROM_CHAPTER" --out "/data/manga" ${pdf_flag:-}
-    exit $?
+    # Use exec so python becomes PID 1 and receives signals (Ctrl+C)
+    exec $PYTHON /app/bato_scraper.py --series "$SERIES" --from "$FROM_CHAPTER" --out "/data/manga" ${PDF_FLAG} ${DRY_RUN_FLAG}
+    # exec replaces the shell, so no need to exit
   fi
   # default: latest
-  $PYTHON /app/bato_scraper.py --series "$SERIES" --latest --out "/data/manga" ${pdf_flag:-} ${DRY_RUN_FLAG}
-  exit $?
+  exec $PYTHON /app/bato_scraper.py --series "$SERIES" --latest --out "/data/manga" ${PDF_FLAG} ${DRY_RUN_FLAG}
+  # exec replaced the shell; container will stop when python exits
 fi
 
 if [ "${CRON}" = "true" ]; then
@@ -77,6 +83,6 @@ if [ "${CRON}" = "true" ]; then
 else
   # If CRON not enabled and not RUN_ONCE, default to running latest once
   echo "Running one-off latest fetch for series ${SERIES}"
-  $PYTHON /app/bato_scraper.py --series "$SERIES" --latest --out "/data/manga" ${DRY_RUN_FLAG}
-  exit $?
+  exec $PYTHON /app/bato_scraper.py --series "$SERIES" --latest --out "/data/manga" ${PDF_FLAG} ${DRY_RUN_FLAG}
+  # exec will replace this script; container ends when python exits
 fi
