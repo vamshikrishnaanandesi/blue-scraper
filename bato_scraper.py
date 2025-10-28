@@ -441,12 +441,11 @@ if __name__ == "__main__":
 
     # Ensure output directory exists and initialize DB for tracking
     os.makedirs(args.out, exist_ok=True)
+    db_path = os.path.join(args.out, "scraper.db")
     try:
-        db_path = os.path.join(args.out, "scraper.db")
-        try:
-            db.init_db(db_path)
-        except Exception as e:
-            print(f"Warning: failed to initialize DB at {db_path}: {e}")
+        db.init_db(db_path)
+    except Exception as e:
+        print(f"Warning: failed to initialize DB at {db_path}: {e}")
 
     if args.latest:
         chap = get_latest_chapter(args.series)
