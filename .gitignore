@@ -1,0 +1,36 @@
+# Python virtual environment
+venv/
+env/
+bin/
+include/
+lib/
+lib64/
+pyvenv.cfg
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Local development settings
+.env
+.venv
+
+# IDE settings
+.vscode/
+.idea/
+
+# Project specific
+data/
+results/
+*.pdf
+*.log
+
+# OS specific
+.DS_Store
+Thumbs.db

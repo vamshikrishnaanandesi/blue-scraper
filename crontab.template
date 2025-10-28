@@ -1,0 +1,3 @@
+# CRON template for blue-scraper
+# Replace <SCHEDULE> and <SERIES> when creating /etc/cron.d/blue-scraper
+<SCHEDULE> root /usr/local/bin/python /app/bato_scraper.py --series <SERIES> --latest --out /data/manga >> /var/log/blue-scraper/cron.log 2>&1

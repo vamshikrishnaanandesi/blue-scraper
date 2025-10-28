@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  blue-scraper:
+    build: .
+    image: blue-scraper:latest
+    restart: unless-stopped
+    environment:
+      # set SERIES to the series slug you want to monitor
+      SERIES: "86663-en-grand-blue-dreaming-official"
+      # set CRON to "true" to run cron inside container, or leave unset and call container with RUN_ONCE=1
+      CRON: "true"
+      # cron schedule (default: daily at 04:30)
+      CRON_SCHEDULE: "30 4 * * *"
+      # When CRON=true this chooses whether to create a PDF (true) or download images (false)
+      PDF: "true"
+    volumes:
+      - ./data:/data/manga
+      - ./cron.log:/var/log/blue-scraper/cron.log
+    # Example: override to run once immediately
+    # command: ["--run-once"]
