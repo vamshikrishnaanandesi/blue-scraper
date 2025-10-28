@@ -18,6 +18,8 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 from chapter_discovery import get_chapters_from_series, find_chapter_by_number
+import db
+from datetime import datetime
 
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
@@ -320,26 +322,74 @@ def download_chapter_by_number(series_id: str, chapter_num: float, out_dir: str,
         out_pdf = os.path.join(out_dir, f"{safe_series}_ch_{str(chap.chapter_num).replace('.', '_')}.pdf")
         if dry_run:
             print(f"[dry-run] Would create PDF: {out_pdf} from {url}")
+            # Record dry-run intent
+            try:
+                db.record_download(series_id, chap.chapter_num, chap.chapter_id, url, out_pdf, status="dry-run", size=None)
+            except Exception:
+                pass
             return out_pdf
         # Skip if already exists
         if os.path.exists(out_pdf) and os.path.getsize(out_pdf) > 1024:
-            print(f"Skipping download; PDF already exists: {out_pdf}")
-            return out_pdf
+            # ensure DB has a record; if so, skip. Otherwise record and skip
+            try:
+                if db.was_downloaded(series_id, chap.chapter_num):
+                    print(f"Skipping download; PDF already exists: {out_pdf}")
+                    return out_pdf
+                else:
+                    # record existing file as completed
+                    size = os.path.getsize(out_pdf)
+                    db.record_download(series_id, chap.chapter_num, chap.chapter_id, url, out_pdf, status="completed", size=size)
+                    print(f"Skipping download; PDF already exists (recorded): {out_pdf}")
+                    return out_pdf
+            except Exception:
+                print(f"Skipping download; PDF already exists: {out_pdf}")
+                return out_pdf
         print(f"Downloading chapter {chap.display_name} -> {out_pdf}")
-        return download_and_make_pdf(url, out_pdf, session=session)
+        res = download_and_make_pdf(url, out_pdf, session=session)
+        try:
+            size = os.path.getsize(res) if os.path.exists(res) else None
+            db.record_download(series_id, chap.chapter_num, chap.chapter_id, url, res, status="completed", size=size)
+        except Exception:
+            pass
+        return res
     else:
         # download images into folder
         out_folder = os.path.join(out_dir, f"{safe_series}_ch_{str(chap.chapter_num).replace('.', '_')}")
         if dry_run:
             print(f"[dry-run] Would download images to: {out_folder} from {url}")
+            try:
+                db.record_download(series_id, chap.chapter_num, chap.chapter_id, url, out_folder, status="dry-run", size=None)
+            except Exception:
+                pass
             return out_folder
         # Skip if folder exists and has files
         if os.path.isdir(out_folder) and any(os.scandir(out_folder)):
-            print(f"Skipping download; images folder already exists: {out_folder}")
-            return out_folder
+            try:
+                if db.was_downloaded(series_id, chap.chapter_num):
+                    print(f"Skipping download; images folder already exists: {out_folder}")
+                    return out_folder
+                else:
+                    # record existing folder as completed (size unknown)
+                    db.record_download(series_id, chap.chapter_num, chap.chapter_id, url, out_folder, status="completed", size=None)
+                    print(f"Skipping download; images folder already exists (recorded): {out_folder}")
+                    return out_folder
+            except Exception:
+                print(f"Skipping download; images folder already exists: {out_folder}")
+                return out_folder
         print(f"Downloading images for {chap.display_name} -> {out_folder}")
         urls = get_image_urls(url, session=session)
         saved = download_images(urls, out_folder, prefix="page", session=session)
+        # record completion
+        try:
+            total = 0
+            for p in saved:
+                try:
+                    total += os.path.getsize(p)
+                except Exception:
+                    continue
+            db.record_download(series_id, chap.chapter_num, chap.chapter_id, url, out_folder, status="completed", size=(total if total>0 else None))
+        except Exception:
+            pass
         return out_folder
 
 
@@ -389,15 +439,19 @@ if __name__ == "__main__":
     p.add_argument("--dry-run", action="store_true", help="Print actions without downloading")
     args = p.parse_args()
 
+    # Ensure output directory exists and initialize DB for tracking
+    os.makedirs(args.out, exist_ok=True)
+    db_path = os.path.join(args.out, "scraper.db")
     try:
-        if args.latest:
-            chap = get_latest_chapter(args.series)
-            print(f"Latest chapter: {chap.display_name} -> {chap.get_url(args.series)}")
-            download_chapter_by_number(args.series, chap.chapter_num, args.out, make_pdf=args.pdf, dry_run=args.dry_run)
-
-        elif args.from_chapter is not None:
-            print(f"Downloading from chapter {args.from_chapter} to latest for series {args.series}")
-            download_from_chapter_to_latest(args.series, args.from_chapter, args.out, make_pdf=args.pdf, dry_run=args.dry_run)
-
+        db.init_db(db_path)
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Warning: failed to initialize DB at {db_path}: {e}")
+
+    if args.latest:
+        chap = get_latest_chapter(args.series)
+        print(f"Latest chapter: {chap.display_name} -> {chap.get_url(args.series)}")
+        download_chapter_by_number(args.series, chap.chapter_num, args.out, make_pdf=args.pdf, dry_run=args.dry_run)
+
+    elif args.from_chapter is not None:
+        print(f"Downloading from chapter {args.from_chapter} to latest for series {args.series}")
+        download_from_chapter_to_latest(args.series, args.from_chapter, args.out, make_pdf=args.pdf, dry_run=args.dry_run)
