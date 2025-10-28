@@ -119,37 +119,39 @@ def find_chapter_by_number(series_id: str, chapter_num: float, session: Optional
         Chapter object if found, None otherwise
     """
     chapters = get_chapters_from_series(series_id, session)
+    
+    # First try to find exact match in current listing
     for chapter in chapters:
         if abs(chapter.chapter_num - chapter_num) < 0.01:  # handle float comparison
             return chapter
-
-    # Not found in current listing - try direct URL probing with known IDs
+            
+    # If chapter number is greater than any available chapter, fail fast
+    if chapters and chapter_num > max(c.chapter_num for c in chapters):
+        return None
+        
+    # Not found in current listing - try constructing the URL with probable IDs
     s = session or requests.Session()
-
-    # Try potential chapter IDs from earlier discovery
-    potential_ids = {
-        45: "1680643",
-        45.5: "3255185", 
-        46: "1680609"
-    }
-
-    # If we have a known ID for this chapter, try it directly
-    if chapter_num in potential_ids:
+    
+    # Try a range of potential chapter IDs
+    # Bato.to often uses IDs in this range for older chapters
+    potential_ids = list(range(1680600, 1680700)) + list(range(3255000, 3255200))
+    
+    for ch_id in potential_ids:
         try:
-            ch_id = potential_ids[chapter_num]
-            vol = "11" if chapter_num <= 45.5 else "12"
+            # Determine likely volume (rough estimate)
+            vol = str(max(1, int(chapter_num // 4)))
             chapter = Chapter(
-                chapter_id=ch_id,
+                chapter_id=str(ch_id),
                 chapter_num=chapter_num,
                 volume=vol
             )
             # Verify the chapter exists by making a HEAD request
             url = chapter.get_url(series_id)
-            r = s.head(url, headers=DEFAULT_HEADERS, allow_redirects=True)
+            r = s.head(url, headers=DEFAULT_HEADERS, allow_redirects=True, timeout=5)
             if r.status_code == 200:
                 return chapter
         except Exception:
-            pass
+            continue
 
     # Not found - prepare helpful error message
     available = sorted(set(c.chapter_num for c in chapters))
