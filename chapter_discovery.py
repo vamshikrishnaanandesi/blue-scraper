@@ -23,7 +23,7 @@ class Chapter:
 
     def get_url(self, series_id: str) -> str:
         """Generate the full chapter URL given the series ID."""
-        vol = f"vol_{self.volume}_" if self.volume else ""
+        vol = f"vol_{self.volume}-" if self.volume else ""
         ch = f"ch_{self.chapter_num}".rstrip('.0')  # remove .0 for whole numbers
         return f"https://bato.si/title/{series_id}/{self.chapter_id}-{vol}{ch}"
 
